@@ -1,0 +1,35 @@
+Downloading original, attempt 1
+By pressing any key to continue you confirm that you have agreed to the FaceForensics terms of use as described at:
+http://kaldir.vc.in.tum.de/faceforensics/webpage/FaceForensics_TOS.pdf
+***
+Press any key to continue, or CTRL-C to exit.
+Downloading videos of dataset "original_sequences/youtube"
+Output path: E:\study\论文代码\data\FaceForensics++\original_sequences/youtube\c23\videos
+Downloading Deepfakes, attempt 1
+By pressing any key to continue you confirm that you have agreed to the FaceForensics terms of use as described at:
+http://kaldir.vc.in.tum.de/faceforensics/webpage/FaceForensics_TOS.pdf
+***
+Press any key to continue, or CTRL-C to exit.
+Downloading videos of dataset "manipulated_sequences/Deepfakes"
+Output path: E:\study\论文代码\data\FaceForensics++\manipulated_sequences/Deepfakes\c23\videos
+Downloading Face2Face, attempt 1
+By pressing any key to continue you confirm that you have agreed to the FaceForensics terms of use as described at:
+http://kaldir.vc.in.tum.de/faceforensics/webpage/FaceForensics_TOS.pdf
+***
+Press any key to continue, or CTRL-C to exit.
+Downloading videos of dataset "manipulated_sequences/Face2Face"
+Output path: E:\study\论文代码\data\FaceForensics++\manipulated_sequences/Face2Face\c23\videos
+Downloading FaceSwap, attempt 1
+By pressing any key to continue you confirm that you have agreed to the FaceForensics terms of use as described at:
+http://kaldir.vc.in.tum.de/faceforensics/webpage/FaceForensics_TOS.pdf
+***
+Press any key to continue, or CTRL-C to exit.
+Downloading videos of dataset "manipulated_sequences/FaceSwap"
+Output path: E:\study\论文代码\data\FaceForensics++\manipulated_sequences/FaceSwap\c23\videos
+Downloading NeuralTextures, attempt 1
+By pressing any key to continue you confirm that you have agreed to the FaceForensics terms of use as described at:
+http://kaldir.vc.in.tum.de/faceforensics/webpage/FaceForensics_TOS.pdf
+***
+Press any key to continue, or CTRL-C to exit.
+Downloading videos of dataset "manipulated_sequences/NeuralTextures"
+Output path: E:\study\论文代码\data\FaceForensics++\manipulated_sequences/NeuralTextures\c23\videos

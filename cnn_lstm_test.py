@@ -1,0 +1,113 @@
+"""Evaluate a trained CNN+LSTM on the held-out FF++ test split only."""
+import argparse
+import csv
+import hashlib
+import json
+from pathlib import Path
+
+import torch
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+from config import CLASSES
+from dataset.ffpp import FFPPDataset, read_splits
+from model.cnn_lstm import CNNLSTM
+from utils.metrics import Metrics
+from utils.runtime import seed_everything, seed_worker
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--data-root', required=True)
+    parser.add_argument('--splits-dir', default='data/splits')
+    parser.add_argument('--checkpoint', required=True, help='Trusted training checkpoint, normally best.pt')
+    parser.add_argument('--output', default='runs/cnn_lstm/test')
+    parser.add_argument('--batch-size', type=int, default=2)
+    parser.add_argument('--workers', type=int, default=0)
+    parser.add_argument('--device', choices=['cuda', 'cpu'], default='cuda')
+    parser.add_argument('--amp', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--allow-missing', action='store_true', help='Subset debugging only')
+    args = parser.parse_args()
+    if args.batch_size < 1 or args.workers < 0:
+        parser.error('batch-size must be positive and workers nonnegative')
+    if args.device == 'cuda' and not torch.cuda.is_available():
+        raise RuntimeError('CUDA unavailable; install CUDA-enabled PyTorch or use --device cpu')
+
+    # Checkpoints include Python/NumPy RNG state: only load trusted local files.
+    checkpoint = torch.load(args.checkpoint, map_location='cpu', weights_only=False)
+    if checkpoint['classes'] != CLASSES:
+        raise ValueError('Checkpoint class mapping differs')
+    config = checkpoint['config']
+    seed_everything(config['seed'])
+    splits = read_splits(args.splits_dir)
+    split_hash = hashlib.sha256(json.dumps(splits, sort_keys=True).encode()).hexdigest()
+    if split_hash != checkpoint['split_hash']:
+        raise ValueError('Split files differ from training checkpoint')
+    dataset = FFPPDataset(args.data_root, splits['test'], config['compression'],
+                          config['frames'], config['image_size'], training=False,
+                          allow_missing=args.allow_missing)
+    device = torch.device(args.device)
+    amp = args.amp and device.type == 'cuda'
+    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False,
+                        num_workers=args.workers, pin_memory=device.type == 'cuda',
+                        worker_init_fn=seed_worker,
+                        generator=torch.Generator().manual_seed(config['seed']))
+    model = CNNLSTM(config['hidden_size'], pretrained=False,
+                    freeze_backbone=config['freeze_backbone']).to(device)
+    model.load_state_dict(checkpoint['model'], strict=True)
+    model.eval()
+    metrics, predictions = Metrics(), []
+    offset = 0
+    print(f'FF++ test counts: {dict(zip(CLASSES, dataset.counts))}; device={device}; AMP={amp}')
+    with torch.inference_mode():
+        for clips, labels in tqdm(loader, desc='FF++ test'):
+            clips, labels = clips.to(device, non_blocking=True), labels.to(device, non_blocking=True)
+            with torch.autocast(device_type=device.type, enabled=amp):
+                logits = model(clips)
+                loss = torch.nn.functional.cross_entropy(logits, labels)
+            if not torch.isfinite(logits).all() or not torch.isfinite(loss):
+                raise RuntimeError('Non-finite test outputs')
+            metrics.update(logits, labels, loss.item())
+            probabilities = logits.float().softmax(dim=1).cpu().tolist()
+            for i, probability in enumerate(probabilities):
+                path, truth = dataset.samples[offset + i]
+                predicted = max(range(5), key=probability.__getitem__)
+                predictions.append([str(path.relative_to(Path(args.data_root))), truth,
+                                    CLASSES[truth], predicted, CLASSES[predicted], *probability])
+            offset += len(probabilities)
+
+    result = metrics.compute()
+    matrix = torch.tensor(result['confusion_matrix'], dtype=torch.float64)
+    precision = matrix.diag() / matrix.sum(0).clamp_min(1)
+    recall = matrix.diag() / matrix.sum(1).clamp_min(1)
+    result.update(macro_precision=precision.mean().item(), macro_recall=recall.mean().item(),
+                  per_class={name: {'precision': precision[i].item(), 'recall': recall[i].item(),
+                                   'f1': result['per_class_f1'][i], 'support': dataset.counts[i]}
+                             for i, name in enumerate(CLASSES)},
+                  classes=CLASSES, split='test', split_hash=split_hash,
+                  checkpoint=str(Path(args.checkpoint).resolve()),
+                  checkpoint_epoch=checkpoint['epoch'] + 1,
+                  compression=config['compression'], frames=config['frames'], image_size=config['image_size'],
+                  class_counts=dict(zip(CLASSES, dataset.counts)),
+                  incomplete_test_set=any(n != 2 * len(splits['test']) for n in dataset.counts),
+                  device=args.device, amp=amp)
+    output = Path(args.output)
+    output.mkdir(parents=True, exist_ok=True)
+    (output / 'test_metrics.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
+    with (output / 'predictions.csv').open('w', newline='', encoding='utf-8-sig') as f:
+        writer = csv.writer(f)
+        writer.writerow(['video', 'true_id', 'true_class', 'predicted_id', 'predicted_class',
+                         *[f'prob_{name}' for name in CLASSES]])
+        writer.writerows(predictions)
+    with (output / 'confusion_matrix.csv').open('w', newline='', encoding='utf-8-sig') as f:
+        writer = csv.writer(f)
+        writer.writerow(['true / predicted', *CLASSES])
+        writer.writerows([name, *row] for name, row in zip(CLASSES, result['confusion_matrix']))
+    print(f'Test videos: {result["samples"]}; accuracy={result["accuracy"]:.4f}; macro F1={result["macro_f1"]:.4f}')
+    for name, values in result['per_class'].items():
+        print(f'{name:16} precision={values["precision"]:.4f} recall={values["recall"]:.4f} F1={values["f1"]:.4f} n={values["support"]}')
+    print(f'Results saved to {output.resolve()}')
+
+
+if __name__ == '__main__':
+    main()

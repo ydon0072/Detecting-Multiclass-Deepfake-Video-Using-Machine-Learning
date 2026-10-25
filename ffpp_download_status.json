@@ -1,0 +1,13 @@
+{
+  "state": "downloaded",
+  "completed_classes": [
+    "original",
+    "Deepfakes",
+    "Face2Face",
+    "FaceSwap",
+    "NeuralTextures"
+  ],
+  "output": "E:\\study\\\u8bba\u6587\u4ee3\u7801\\data\\FaceForensics++",
+  "current_class": "NeuralTextures",
+  "note": "5000 video files downloaded; full decoding validation pending."
+}
